@@ -12,6 +12,25 @@ from app import dashboards as dash
 
 app = FastAPI(title="Analytics Query API")
 
+# CORS so dashboard at :3000 can call this API; add headers to every response (including 404/5xx)
+@app.middleware("http")
+async def add_cors_everywhere(request, call_next):
+    if request.method == "OPTIONS":
+        from starlette.responses import Response
+        return Response(
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+            },
+        )
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,6 +38,11 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+@app.get("/")
+async def root():
+    return {"service": "Analytics Query API", "docs": "/docs", "health": "/health"}
 
 
 @app.get("/health")

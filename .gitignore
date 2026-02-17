@@ -1,3 +1,7 @@
+# -----------------------------------------------------------------------------
+# Analytics – ignore patterns (keep repo clean; do not commit generated files)
+# -----------------------------------------------------------------------------
+
 # Python
 __pycache__/
 *.py[cod]
@@ -10,24 +14,41 @@ env/
 .eggs/
 dist/
 build/
+*.egg
 
-# Node
+# Node / frontend
 node_modules/
 npm-debug.log*
 yarn-error.log*
+yarn-debug.log*
 .pnpm-debug.log*
+.pnpm-store/
+services/dashboard/dist/
+.vite/
 
-# Env
+# Environment and secrets
 .env
 .env.local
 .env.*.local
+*.pem
 
-# IDE / OS
+# IDE and editor
 .idea/
 .vscode/
 *.swp
-.DS_Store
+*.swo
+*~
 
-# Build outputs
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and cache
 *.log
 .cache/
+.coverage
+htmlcov/
+.tox/
+
+# Optional: uncomment to ignore lockfiles (not recommended for apps)
+# package-lock.json

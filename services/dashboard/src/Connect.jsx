@@ -63,11 +63,19 @@ export default function Connect() {
     const url = apiUrl.replace(/\/$/, '')
     try {
       const r = await fetch(`${url}/health`)
-      if (!r.ok) throw new Error('Query API not reachable')
+      if (r.status === 404) {
+        setError('Got 404. Is the Analytics Query API (not another app) running on this port? Start it with: cd services/query-api && uvicorn app.main:app --port 8001')
+        return
+      }
+      if (!r.ok) throw new Error(`Server returned ${r.status}`)
       setConfig({ apiUrl: url, projectId })
       navigate('/dashboard')
     } catch (err) {
-      setError(err.message || 'Could not connect. Is the Query API running on that URL?')
+      if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+        setError('Cannot reach the server. Is the Query API running? Start it with: cd services/query-api && uvicorn app.main:app --port 8001')
+      } else {
+        setError(err.message || 'Could not connect. Is the Query API running on that URL?')
+      }
     }
   }
 
