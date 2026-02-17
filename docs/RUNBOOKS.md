@@ -1,5 +1,49 @@
 # Runbooks
 
+## Health and readiness
+
+- **Capture API**
+  - `GET /health`: returns 200 when the process is up.
+  - `GET /ready`: returns 200 when Kafka producer is connected; 503 when disconnected. Use for load balancer readiness.
+- **Query API**: `GET /health` — 200 when up. No dependency check (ClickHouse is checked per query).
+- **Auth API**: `GET /health` — 200 when up.
+- **Consumer**: No HTTP server; process exit indicates failure. Metrics (and thus basic liveness) are on `CONSUMER_METRICS_PORT` (default 9090); scrape `GET /metrics` to confirm the process is running.
+
+## Observability
+
+- **Logging**: All services use structured JSON logging (e.g. `structlog`) to stdout. Include `error`, `project_id`, and request context in log events.
+- **Metrics**: Prometheus metrics are exposed at `GET /metrics` on each HTTP service. Consumer exposes metrics on a separate port (default 9090).
+  - Capture: `capture_requests_total`, `capture_request_duration_seconds`, `capture_kafka_produce_*`.
+  - Consumer: `consumer_messages_consumed_total`, `consumer_batches_written_total`, `consumer_insert_errors_total`, `consumer_parse_errors_total`, `consumer_dlq_messages_total`.
+  - Query: `query_requests_total`, `query_trend_duration_seconds`, `query_funnel_duration_seconds`, `query_errors_total`.
+  - Auth: `auth_requests_total`, `auth_request_duration_seconds`.
+- **Dashboards**: Point Grafana (or equivalent) at these metrics for SLO dashboards and alerting. Create panels for capture request rate, Kafka produce latency, consumer lag, insert errors, DLQ count, and query latency.
+
+---
+
+## Deployment
+
+- See [DEPLOYMENT.md](DEPLOYMENT.md) for production infrastructure (Kafka replication, ClickHouse, PostgreSQL, Redis), health checks, and example Kubernetes/ECS configs.
+- **Deploy order:** Start infrastructure (Kafka, ClickHouse, PostgreSQL, Redis), then Auth API, then Capture API, Consumer(s), Query API. Run ClickHouse DDL and optional migration for extracted properties before or right after first deploy.
+
+---
+
+## API key validation
+
+- **Capture API:** When `CAPTURE_REQUIRE_API_KEY=true`, every `POST /capture` must include a valid `X-API-Key` header. The key is validated against the Auth API; `project_id` is resolved from the key and applied to events. Invalid or missing key returns 401.
+- **Query API:** When `QUERY_REQUIRE_API_KEY=true`, requests must include a valid `X-API-Key`; queries and dashboards are scoped to the key’s project. With key optional, passing a valid key still scopes to that project.
+- **Creating keys:** Use Auth API `POST /api/projects/{project_id}/api-keys` (with JWT). Store the returned `api_key` securely; it is only shown once.
+
+---
+
+## Dead-letter queue (DLQ)
+
+- Failed events (parse errors or ClickHouse insert after retries) are produced to the **events-dlq** Kafka topic (configurable via `CONSUMER_DLQ_TOPIC`). Each message value is JSON: `raw` (original event), `error_kind`, `error_message`, `dlq_ts`.
+- **Inspect:** Consume from `events-dlq` (e.g. `kafka-console-consumer --topic events-dlq --bootstrap-server localhost:9092`) or use a DLQ consumer that logs or forwards to support. Metric `consumer_dlq_messages_total` counts messages sent to DLQ.
+- **Replay:** Build a small job that reads from the DLQ topic and re-submits `raw` to the Capture API or writes to ClickHouse after fixing data.
+
+---
+
 ## Kafka: partitioning and scaling
 
 ### Partition key

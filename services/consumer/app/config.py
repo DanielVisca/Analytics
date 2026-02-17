@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     clickhouse_table: str = "events"
     batch_size: int = 1000
     batch_interval_seconds: float = 5.0
+    metrics_port: int = 9090
+    insert_retry_count: int = 3
+    insert_retry_backoff_seconds: float = 1.0
+    dlq_topic: str = "events-dlq"
+    shutdown_wait_seconds: float = 30.0
 
     class Config:
         env_prefix = "CONSUMER_"

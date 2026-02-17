@@ -1,8 +1,20 @@
+import json
 from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from app.config import settings
+
+
+def _properties_depth(d: Any) -> int:
+    """Return maximum nesting depth of dict. Empty dict has depth 1."""
+    if not isinstance(d, dict):
+        return 0
+    if not d:
+        return 1
+    return 1 + max(_properties_depth(v) for v in d.values())
 
 
 class CaptureEvent(BaseModel):
@@ -26,6 +38,27 @@ class CaptureEvent(BaseModel):
         if isinstance(v, datetime):
             return v.isoformat()
         return str(v)
+
+    @model_validator(mode="after")
+    def validate_properties_limits(self) -> "CaptureEvent":
+        if self.properties is None:
+            return self
+        p = self.properties
+        if len(p) > settings.properties_max_keys:
+            raise ValueError(
+                f"properties has {len(p)} keys; maximum is {settings.properties_max_keys}"
+            )
+        depth = _properties_depth(p)
+        if depth > settings.properties_max_depth:
+            raise ValueError(
+                f"properties depth {depth} exceeds maximum {settings.properties_max_depth}"
+            )
+        serialized = json.dumps(p)
+        if len(serialized.encode("utf-8")) > settings.properties_max_size_bytes:
+            raise ValueError(
+                f"properties serialized size exceeds maximum {settings.properties_max_size_bytes} bytes"
+            )
+        return self
 
     def kafka_key(self) -> str:
         return self.distinct_id

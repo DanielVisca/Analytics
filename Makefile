@@ -1,7 +1,7 @@
 # Analytics system - common targets
 # Prereqs: Docker (infra), Python venvs per service, Node.js (dashboard), k6 for stress tests
 
-.PHONY: infra-up infra-down init-ch dashboard-dev dashboard-build stress-capture stress-query help
+.PHONY: infra-up infra-down init-ch dashboard-dev dashboard-build stress-capture stress-query integration-test help
 
 # Start infrastructure (Kafka, ClickHouse, PostgreSQL, Redis)
 infra-up:
@@ -32,6 +32,10 @@ stress-capture:
 stress-query:
 	k6 run tests/stress-query.js
 
+# Integration tests (requires full stack: infra, Capture API, Consumer, Query API)
+integration-test:
+	pytest tests/integration/ -v
+
 # Show available targets
 help:
 	@echo "Analytics System - Available targets:"
@@ -48,6 +52,7 @@ help:
 	@echo "  Load Testing:"
 	@echo "    make stress-capture    Run capture API stress test (requires k6)"
 	@echo "    make stress-query      Run query API stress test"
+	@echo "    make integration-test Run integration tests (requires full stack + pytest)"
 	@echo ""
 	@echo "  Services (start manually or use examples/run-all.sh):"
 	@echo "    cd services/capture-api && .venv/bin/uvicorn app.main:app --port 8000"

@@ -1,9 +1,12 @@
+import time
+from contextlib import asynccontextmanager
 from typing import Optional
 from uuid import UUID
 
 import psycopg2
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, OAuth2PasswordRequestForm
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.db import get_conn
@@ -17,8 +20,37 @@ from app.auth_utils import (
     key_prefix,
     generate_api_key,
 )
+from app.db import close_pg_pool, init_pg_pool
+from app.logging_config import configure_logging
+from app.metrics import REQUESTS_LATENCY, REQUESTS_TOTAL, metrics_endpoint, status_class
 
-app = FastAPI(title="Analytics Auth API")
+
+class MetricsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        start = time.perf_counter()
+        method = request.method
+        path = request.url.path or "/"
+        response = await call_next(request)
+        duration = time.perf_counter() - start
+        sc = status_class(response.status_code)
+        REQUESTS_TOTAL.labels(method=method, path=path, status_class=sc).inc()
+        REQUESTS_LATENCY.labels(method=method, path=path).observe(duration)
+        return response
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    configure_logging()
+    init_pg_pool()
+    try:
+        yield
+    finally:
+        close_pg_pool()
+
+
+app = FastAPI(title="Analytics Auth API", lifespan=lifespan)
+app.add_middleware(MetricsMiddleware)
+app.add_route("/metrics", metrics_endpoint, methods=["GET"])
 security = HTTPBearer(auto_error=False)
 
 
@@ -34,6 +66,29 @@ def get_current_user_id(credentials: Optional[HTTPAuthorizationCredentials] = De
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/internal/validate-key")
+async def validate_api_key(
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+):
+    """Validate API key and return project_id. Used by Capture API and Query API. Returns 401 if missing or invalid."""
+    if not x_api_key or not x_api_key.strip():
+        raise HTTPException(status_code=401, detail="Missing API key")
+    key_hash = hash_api_key(x_api_key.strip())
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT project_id FROM api_keys WHERE key_hash = %s",
+                (key_hash,),
+            )
+            row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+        return {"project_id": str(row["project_id"])}
+    finally:
+        conn.close()
 
 
 @app.post("/api/register", response_model=UserResponse)

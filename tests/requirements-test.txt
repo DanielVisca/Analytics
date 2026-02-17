@@ -1,0 +1,3 @@
+# Dependencies for integration tests (run: pip install -r tests/requirements-test.txt)
+pytest>=7.0.0
+httpx>=0.25.0

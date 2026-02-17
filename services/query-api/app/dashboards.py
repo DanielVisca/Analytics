@@ -153,6 +153,8 @@ def execute_widget(project_id: str, insight_type: str, params: dict[str, Any]) -
             steps=params.get("steps", []),
             date_from=date_from or date.today(),
             date_to=date_to or date.today(),
+            strict=params.get("strict", True),
+            conversion_window_days=min(max(1, int(params.get("conversion_window_days", 30))), 365),
         )
     return {"error": "unknown insight_type"}
 

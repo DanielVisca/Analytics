@@ -61,38 +61,84 @@ def run_funnel(
     steps: list[str],
     date_from: date,
     date_to: date,
+    strict: bool = True,
+    conversion_window_days: int = 30,
 ) -> dict[str, Any]:
     project_id = _safe_project(project_id)
     if len(steps) < 2:
-        return {"steps": []}
-    # Allowlist event names
+        return {"steps": [], "mode": "strict" if strict else "simple"}
     steps = [_safe_event(s) for s in steps[:20]]
     steps = [s for s in steps if s]
     if len(steps) < 2:
-        return {"steps": []}
-    # Simplified funnel: count distinct_id per step (ordered steps; strict ordering would need subqueries).
-    step_counts = []
-    # Format dates as strings for clickhouse-connect parameters
+        return {"steps": [], "mode": "strict" if strict else "simple"}
     date_from_str = datetime.combine(date_from, datetime.min.time()).strftime('%Y-%m-%d %H:%M:%S')
     date_to_next = date_to + timedelta(days=1)
     date_to_str = datetime.combine(date_to_next, datetime.min.time()).strftime('%Y-%m-%d %H:%M:%S')
-    for i, ev in enumerate(steps):
-        q = f"""
-        SELECT count(DISTINCT distinct_id) AS cnt
-        FROM {settings.clickhouse_database}.events
-        WHERE project_id = {{project_id:String}} AND event = {{event:String}}
-          AND timestamp >= {{date_from:String}} AND timestamp < {{date_to:String}}
-        """
-        params = {
+
+    if strict:
+        # Same user, steps in order, within conversion_window_days.
+        # Subquery: per distinct_id, min(timestamp) for each step event.
+        # Outer: count how many have t0 < t1 < ... and (t_last - t_first) <= window per step.
+        min_if_parts = [
+            f"minIf(timestamp, event = {{step_{i}:String}}) AS t{i}"
+            for i in range(len(steps))
+        ]
+        count_if_parts = []
+        for i in range(len(steps)):
+            conds = [f"t{j} IS NOT NULL" for j in range(i + 1)]
+            if i > 0:
+                conds.extend(f"t{j} < t{j+1}" for j in range(i))
+                conds.append(
+                    f"dateDiff('day', t0, t{i}) <= {conversion_window_days}"
+                )
+            count_if_parts.append(f"countIf({' AND '.join(conds)}) AS c{i}")
+        params: dict[str, Any] = {
             "project_id": project_id,
-            "event": ev,
             "date_from": date_from_str,
             "date_to": date_to_str,
         }
-        r = client.query(q, parameters=params)
-        cnt = r.result_rows[0][0] if r.result_rows else 0
-        step_counts.append({"step": i + 1, "event": ev, "count": cnt})
-    return {"steps": step_counts}
+        for i, ev in enumerate(steps):
+            params[f"step_{i}"] = ev
+        subquery_select = ", ".join(min_if_parts)
+        inner_q = f"""
+        SELECT distinct_id, {subquery_select}
+        FROM {settings.clickhouse_database}.events
+        WHERE project_id = {{project_id:String}}
+          AND event IN ({', '.join([f'{{step_{i}:String}}' for i in range(len(steps))])})
+          AND timestamp >= {{date_from:String}} AND timestamp < {{date_to:String}}
+        GROUP BY distinct_id
+        """
+        count_select = ", ".join(count_if_parts)
+        full_q = f"SELECT {count_select} FROM ({inner_q})"
+        result = client.query(full_q, parameters=params)
+        row = result.result_rows[0] if result.result_rows else tuple(0 for _ in steps)
+        step_counts = [
+            {"step": i + 1, "event": steps[i], "count": int(row[i])}
+            for i in range(len(steps))
+        ]
+        return {"steps": step_counts, "mode": "strict", "conversion_window_days": conversion_window_days}
+    else:
+        # Simple: count distinct_id per step independently (no order).
+        step_counts = []
+        for i, ev in enumerate(steps):
+            q = f"""
+            SELECT count(DISTINCT distinct_id) AS cnt
+            FROM {settings.clickhouse_database}.events
+            WHERE project_id = {{project_id:String}} AND event = {{event:String}}
+              AND timestamp >= {{date_from:String}} AND timestamp < {{date_to:String}}
+            """
+            r = client.query(
+                q,
+                parameters={
+                    "project_id": project_id,
+                    "event": ev,
+                    "date_from": date_from_str,
+                    "date_to": date_to_str,
+                },
+            )
+            cnt = r.result_rows[0][0] if r.result_rows else 0
+            step_counts.append({"step": i + 1, "event": ev, "count": cnt})
+        return {"steps": step_counts, "mode": "simple"}
 
 
 def run_recent_events(
