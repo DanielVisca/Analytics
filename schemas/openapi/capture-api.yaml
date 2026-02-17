@@ -1,0 +1,112 @@
+openapi: 3.0.3
+info:
+  title: Analytics Capture API
+  description: Ingestion API for analytics events. Validate and produce to Kafka.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000
+    description: Local
+
+paths:
+  /health:
+    get:
+      summary: Liveness
+      operationId: health
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  /ready:
+    get:
+      summary: Readiness (Kafka producer connected)
+      operationId: ready
+      responses:
+        "200":
+          description: Ready to accept traffic
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ready }
+                  kafka: { type: string, example: connected }
+        "503":
+          description: Not ready (e.g. Kafka disconnected)
+
+  /capture:
+    post:
+      summary: Ingest one or more events
+      description: Accepts a single event or a batch. Returns 202 when events are accepted to Kafka.
+      operationId: capture
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/SingleEvent"
+                - $ref: "#/components/schemas/Batch"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: accepted }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Invalid or missing API key (when auth enabled)
+
+components:
+  schemas:
+    SingleEvent:
+      type: object
+      required: [event, distinct_id]
+      properties:
+        event: { type: string, minLength: 1 }
+        distinct_id: { type: string, minLength: 1 }
+        timestamp: { type: string, format: date-time }
+        properties: { type: object, additionalProperties: true }
+        uuid: { type: string, format: uuid }
+        project_id: { type: string }
+        $lib: { type: string }
+        $lib_version: { type: string }
+        $device_id: { type: string }
+      additionalProperties: true
+
+    Batch:
+      type: object
+      required: [batch]
+      properties:
+        batch:
+          type: array
+          items: { $ref: "#/components/schemas/SingleEvent" }
+          minItems: 1
+          maxItems: 100
+        project_id: { type: string }
+
+    Error:
+      type: object
+      properties:
+        detail: { type: string }
+        errors: { type: array, items: { type: object } }
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Project API key (optional in v1)

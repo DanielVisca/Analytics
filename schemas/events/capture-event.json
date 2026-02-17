@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://analytics/schemas/capture-event.json",
+  "title": "CaptureEvent",
+  "description": "Single analytics event payload for capture/batch API",
+  "type": "object",
+  "required": ["event", "distinct_id"],
+  "properties": {
+    "event": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "description": "Event name (e.g. $pageview, button_click)"
+    },
+    "distinct_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "description": "Unique identifier for the user or anonymous device"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO8601 timestamp; defaults to server time if omitted"
+    },
+    "properties": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Arbitrary key-value event properties"
+    },
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Optional idempotency key for deduplication"
+    },
+    "project_id": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "Project/tenant identifier for multi-tenant setups"
+    },
+    "$lib": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Library name (e.g. web, python)"
+    },
+    "$lib_version": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "Library version"
+    },
+    "$device_id": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "Client device/browser identifier"
+    }
+  },
+  "additionalProperties": true
+}

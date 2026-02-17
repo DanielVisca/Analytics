@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analytics Demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 560px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.5rem; }
+    p { color: #444; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.5rem 0; }
+    button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; border: 1px solid #ccc; border-radius: 6px; background: #f5f5f5; }
+    button:hover { background: #e8e8e8; }
+    #status { margin-top: 1.5rem; padding: 0.75rem; background: #f0f0f0; border-radius: 6px; font-size: 0.9rem; }
+    .ok { color: #0a0; }
+    .err { color: #c00; }
+  </style>
+</head>
+<body>
+  <h1>Analytics demo</h1>
+  <p>This page uses the web SDK to send events to the Capture API. Events are batched (every 5 events or 3 seconds) and sent to <code>POST /capture</code>.</p>
+
+  <h2 style="font-size: 1rem; margin-top: 1.5rem;">What gets captured</h2>
+  <ul style="color: #444; font-size: 0.9rem;">
+    <li><strong>$pageview</strong> — On load (path, url, title).</li>
+    <li><strong>$autocapture_click</strong> — Every click anywhere (tag, text, href).</li>
+    <li><strong>feature_click</strong> — When you click “I clicked Feature” (custom).</li>
+    <li><strong>signup_click</strong> — When you click “Sign up” (custom).</li>
+  </ul>
+  <p style="font-size: 0.85rem; color: #666;">So clicking a button sends both the custom event and an autocapture click. “Flush queue now” sends any queued events immediately.</p>
+
+  <h2 style="font-size: 1rem;">Try it</h2>
+  <div class="actions">
+    <button type="button" id="btn-feature">I clicked “Feature”</button>
+    <button type="button" id="btn-signup">Sign up</button>
+    <button type="button" id="btn-flush">Flush queue now</button>
+  </div>
+
+  <div id="status">SDK loading…</div>
+
+  <script src="js/analytics.js"></script>
+  <script>
+    // SDK: point at your Capture API (must be same origin or CORS-enabled)
+    var captureHost = window.CAPTURE_API_URL || 'http://localhost:8000';
+    var analytics = new Analytics({
+      host: captureHost,
+      projectId: 'default',
+      batchSize: 5,
+      flushIntervalMs: 3000,
+      autocapture: true
+    }).start();
+
+    document.getElementById('status').textContent = 'SDK ready. Capture API: ' + captureHost;
+    document.getElementById('status').className = 'ok';
+
+    document.getElementById('btn-feature').addEventListener('click', function () {
+      analytics.capture('feature_click', { feature: 'demo_button', name: 'Feature' });
+    });
+    document.getElementById('btn-signup').addEventListener('click', function () {
+      analytics.capture('signup_click', { source: 'demo_app' });
+    });
+    document.getElementById('btn-flush').addEventListener('click', function () {
+      var n = analytics._queue ? analytics._queue.length : 0;
+      analytics._flush();
+      document.getElementById('status').textContent = n > 0 ? 'Flush sent ' + n + ' event(s).' : 'Flush triggered (queue empty or already sending).';
+    });
+  </script>
+</body>
+</html>

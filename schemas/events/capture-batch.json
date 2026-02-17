@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://analytics/schemas/capture-batch.json",
+  "title": "CaptureBatch",
+  "description": "Batch of events for POST /capture or POST /batch",
+  "type": "object",
+  "required": ["batch"],
+  "properties": {
+    "batch": {
+      "type": "array",
+      "items": { "$ref": "capture-event.json" }
+      "minItems": 1,
+      "maxItems": 100,
+      "description": "Array of capture events"
+    },
+    "project_id": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "Default project_id applied to all events in batch if not set per event"
+    }
+  }
+}
