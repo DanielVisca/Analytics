@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from clickhouse_connect.driver import Client
@@ -35,15 +35,19 @@ def run_trend(
     SELECT {interval_expr} AS period, count() AS cnt
     FROM {settings.clickhouse_database}.events
     WHERE project_id = {{project_id:String}} AND event = {{event:String}}
-      AND timestamp >= {{date_from:DateTime}} AND timestamp < toDateTime({{date_to:Date}}) + INTERVAL 1 DAY
+      AND timestamp >= {{date_from:String}} AND timestamp < {{date_to:String}}
     GROUP BY period
     ORDER BY period
     """
+    # Format dates as strings for clickhouse-connect parameters
+    date_from_str = datetime.combine(date_from, datetime.min.time()).strftime('%Y-%m-%d %H:%M:%S')
+    date_to_next = date_to + timedelta(days=1)
+    date_to_str = datetime.combine(date_to_next, datetime.min.time()).strftime('%Y-%m-%d %H:%M:%S')
     params = {
         "project_id": project_id,
         "event": event,
-        "date_from": datetime.combine(date_from, datetime.min.time()),
-        "date_to": date_to,
+        "date_from": date_from_str,
+        "date_to": date_to_str,
     }
     result = client.query(q, parameters=params)
     series = [row[1] for row in result.result_rows]
@@ -68,20 +72,52 @@ def run_funnel(
         return {"steps": []}
     # Simplified funnel: count distinct_id per step (ordered steps; strict ordering would need subqueries).
     step_counts = []
+    # Format dates as strings for clickhouse-connect parameters
+    date_from_str = datetime.combine(date_from, datetime.min.time()).strftime('%Y-%m-%d %H:%M:%S')
+    date_to_next = date_to + timedelta(days=1)
+    date_to_str = datetime.combine(date_to_next, datetime.min.time()).strftime('%Y-%m-%d %H:%M:%S')
     for i, ev in enumerate(steps):
         q = f"""
         SELECT count(DISTINCT distinct_id) AS cnt
         FROM {settings.clickhouse_database}.events
         WHERE project_id = {{project_id:String}} AND event = {{event:String}}
-          AND timestamp >= {{date_from:DateTime}} AND timestamp < toDateTime({{date_to:Date}}) + INTERVAL 1 DAY
+          AND timestamp >= {{date_from:String}} AND timestamp < {{date_to:String}}
         """
         params = {
             "project_id": project_id,
             "event": ev,
-            "date_from": datetime.combine(date_from, datetime.min.time()),
-            "date_to": date_to,
+            "date_from": date_from_str,
+            "date_to": date_to_str,
         }
         r = client.query(q, parameters=params)
         cnt = r.result_rows[0][0] if r.result_rows else 0
         step_counts.append({"step": i + 1, "event": ev, "count": cnt})
     return {"steps": step_counts}
+
+
+def run_recent_events(
+    client: Client,
+    project_id: str,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    project_id = _safe_project(project_id)
+    limit = min(max(1, limit), 500)
+    q = f"""
+    SELECT timestamp, distinct_id, event, properties
+    FROM {settings.clickhouse_database}.events
+    WHERE project_id = {{project_id:String}}
+    ORDER BY timestamp DESC
+    LIMIT {limit}
+    """
+    result = client.query(q, parameters={"project_id": project_id})
+    rows = []
+    for row in result.result_rows:
+        ts, distinct_id, event, properties = row
+        ts_str = ts.isoformat() if ts and hasattr(ts, "isoformat") else (str(ts) if ts else "")
+        rows.append({
+            "timestamp": ts_str,
+            "distinct_id": distinct_id or "",
+            "event": event or "",
+            "properties": properties or "{}",
+        })
+    return rows

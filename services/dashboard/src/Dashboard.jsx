@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getConfig, fetchTrends, fetchFunnel } from './api'
+import { getConfig, fetchTrends, fetchFunnel, fetchRecentEvents } from './api'
 
 const styles = {
   layout: { display: 'flex', flexDirection: 'column', minHeight: '100vh' },
@@ -65,6 +65,24 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  tableWrap: {
+    maxHeight: 320,
+    overflow: 'auto',
+    border: '1px solid #eee',
+    borderRadius: 8,
+  },
+  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
+  th: {
+    position: 'sticky',
+    top: 0,
+    background: '#f5f5f5',
+    padding: '10px 12px',
+    textAlign: 'left',
+    borderBottom: '1px solid #eee',
+    fontWeight: 600,
+  },
+  td: { padding: '8px 12px', borderBottom: '1px solid #f0f0f0' },
+  tr: {},
   error: { color: '#c00', fontSize: 13 },
   loading: { color: '#666', fontSize: 13 },
 }
@@ -78,7 +96,9 @@ export default function Dashboard() {
   const [config, setConfig] = useState(null)
   const [trendData, setTrendData] = useState(null)
   const [funnelData, setFunnelData] = useState(null)
+  const [recentEvents, setRecentEvents] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [loadingRecent, setLoadingRecent] = useState(false)
   const [error, setError] = useState('')
   const [eventName, setEventName] = useState('$pageview')
   const [dateFrom, setDateFrom] = useState(() => formatDate(new Date(Date.now() - 7 * 24 * 3600 * 1000)))
@@ -106,6 +126,21 @@ export default function Dashboard() {
       setTrendData(null)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadRecentEvents = async () => {
+    if (!config) return
+    setLoadingRecent(true)
+    setError('')
+    try {
+      const data = await fetchRecentEvents(config.apiUrl, config.projectId, 50)
+      setRecentEvents(data.events || [])
+    } catch (e) {
+      setError(e.message)
+      setRecentEvents(null)
+    } finally {
+      setLoadingRecent(false)
     }
   }
 
@@ -156,6 +191,46 @@ export default function Dashboard() {
       <main style={styles.main}>
         {error && <p style={styles.error}>{error}</p>}
         {loading && <p style={styles.loading}>Loading…</p>}
+
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Last 50 events</h2>
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: '#666' }}>
+            Who did what and when. Scroll to see more.
+          </p>
+          <button type="button" style={styles.button} onClick={loadRecentEvents} disabled={loadingRecent}>
+            {loadingRecent ? 'Loading…' : 'Load recent events'}
+          </button>
+          {recentEvents && (
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>When</th>
+                    <th style={styles.th}>Who (distinct_id)</th>
+                    <th style={styles.th}>Event</th>
+                    <th style={styles.th}>Properties</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentEvents.length === 0 ? (
+                    <tr><td style={styles.td} colSpan={4}>No events yet. Send events from the demo app or your SDK.</td></tr>
+                  ) : (
+                    recentEvents.map((ev, i) => (
+                      <tr key={i} style={styles.tr}>
+                        <td style={styles.td}>{ev.timestamp ? new Date(ev.timestamp).toLocaleString() : ev.timestamp}</td>
+                        <td style={styles.td}>{ev.distinct_id}</td>
+                        <td style={styles.td}>{ev.event}</td>
+                        <td style={{ ...styles.td, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }} title={ev.properties}>
+                          {ev.properties && ev.properties !== '{}' ? ev.properties : '—'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
 
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Trends</h2>

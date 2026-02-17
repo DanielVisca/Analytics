@@ -30,6 +30,16 @@ export async function fetchTrends(apiUrl, projectId, event, dateFrom, dateTo, in
   return r.json()
 }
 
+export async function fetchRecentEvents(apiUrl, projectId, limit = 50) {
+  const params = new URLSearchParams({
+    project_id: projectId,
+    limit: String(limit),
+  })
+  const r = await fetch(`${apiUrl.replace(/\/$/, '')}/api/events/recent?${params}`)
+  if (!r.ok) throw new Error(await r.text())
+  return r.json()
+}
+
 export async function fetchFunnel(apiUrl, projectId, steps, dateFrom, dateTo) {
   const r = await fetch(`${apiUrl.replace(/\/$/, '')}/api/funnels`, {
     method: 'POST',

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.db import get_clickhouse
-from app.insights import run_funnel, run_trend
+from app.insights import run_funnel, run_trend, run_recent_events
 from app.async_jobs import create_and_run_job, get_job
 from app import dashboards as dash
 
@@ -63,6 +63,16 @@ async def get_trends(
     client = get_clickhouse()
     result = run_trend(client, project_id, event, date_from, date_to, interval)
     return result
+
+
+@app.get("/api/events/recent")
+async def get_recent_events(
+    project_id: str = Query(..., alias="project_id"),
+    limit: int = Query(50, ge=1, le=500, alias="limit"),
+):
+    client = get_clickhouse()
+    rows = run_recent_events(client, project_id, limit=limit)
+    return {"events": rows}
 
 
 @app.post("/api/funnels")

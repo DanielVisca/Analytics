@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
 CREATE TABLE IF NOT EXISTS dashboards (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    project_id VARCHAR(256) NOT NULL,
     name VARCHAR(255) NOT NULL,
     layout JSONB DEFAULT '[]',
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS dashboards (
 
 CREATE TABLE IF NOT EXISTS saved_insights (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    project_id VARCHAR(256) NOT NULL,
     dashboard_id UUID REFERENCES dashboards(id) ON DELETE SET NULL,
     name VARCHAR(255) NOT NULL,
     insight_type VARCHAR(64) NOT NULL,
