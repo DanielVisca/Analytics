@@ -2,6 +2,7 @@ from datetime import date
 from typing import Any
 
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.db import get_clickhouse
@@ -10,6 +11,14 @@ from app.async_jobs import create_and_run_job, get_job
 from app import dashboards as dash
 
 app = FastAPI(title="Analytics Query API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
